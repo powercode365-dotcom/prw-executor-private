@@ -1,0 +1,133 @@
+name: C03e-RX transient materializer
+
+on:
+  push:
+    branches:
+      - phase-152-c03e-rx-production-durable-post-auth-fallible-verifier-time-requester-rendezvous-expected-device-admission-async-producer-send-fallible-terminal-receipt-composition-source-materialization
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize exact selected source seam and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="01210b093ae73e6f0d2652bd6d23f2b6db9b1789"
+          SOURCE="crates/prw-agent/src/remote_session_capability_runtime/remote_session_endpoint_lifecycle_runtime.rs"
+          WORKFLOW=".github/workflows/c03e-rx-transient-materialize.yml"
+          EXPECTED_BLOB="2c9f27105a1f67ab017ffbde4d369cee03f84d8c"
+          test "$(git hash-object "$SOURCE")" = "$EXPECTED_BLOB"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/prw-agent/src/remote_session_capability_runtime/remote_session_endpoint_lifecycle_runtime.rs")
+          text = path.read_text()
+          target_name = "produce_remote_session_expected_device_admission_with_fallible_verifier_time_and_fallible_receipt"
+          assert target_name not in text
+          marker = "\n/// Recoverable failed startup transaction retaining the exact admitted reachability authority.\n"
+          assert text.count(marker) == 1
+
+          helper = r'''
+/// Produces at most one live fallible-verifier-time expected-device admission request and returns one fallible terminal handoff receipt.
+///
+/// Ineligible requester completions return their exact existing fallible receipt without constructing
+/// a dispatcher. Eligible custody creates exactly one caller-supplied dispatcher and invokes the
+/// existing RV fallible-receipt request constructor exactly once. Construction failure returns the
+/// exact existing fallible receipt without enqueue. A constructed request is offered exactly once
+/// through the borrowed production sender using ordinary asynchronous Tokio backpressure. Only
+/// successful queue acceptance maps to `Enqueued`; receiver closure terminally drops the returned
+/// unsent request and maps only to `ChannelClosed`.
+#[allow(
+    dead_code,
+    reason = "C03e-RX materializes only the RW-selected dormant fallible async producer send/receipt composition before separately gated dispatcher-source capture, channel ownership split and generic producer specialization"
+)]
+async fn produce_remote_session_expected_device_admission_with_fallible_verifier_time_and_fallible_receipt<
+    D,
+    F,
+>(
+    requester_device_id: DeviceId,
+    completion: Result<
+        RequesterRendezvousFallibleVerifierTimeProductionDurableSchedulingWorkerStop,
+        RemoteSessionSpawnedWorkerJoinError,
+    >,
+    dispatcher_factory: &mut F,
+    sender: &mpsc::Sender<
+        RemoteSessionExpectedDeviceAdmissionRequest<
+            D,
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeSource,
+        >,
+    >,
+) -> RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceipt
+where
+    D: CapabilityDispatcher + Send + 'static,
+    F: FnMut() -> D,
+{
+    let continuation =
+        match classify_remote_session_expected_device_admission_fallible_verifier_time_live_completion(
+            requester_device_id,
+            completion,
+        ) {
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeLiveCompletionClassification::Ineligible(
+                receipt,
+            ) => return receipt,
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeLiveCompletionClassification::Eligible(
+                continuation,
+            ) => continuation,
+        };
+
+    let dispatcher = dispatcher_factory();
+    let handoff = match construct_remote_session_expected_device_admission_request_with_fallible_verifier_time_and_fallible_receipt(
+        continuation,
+        dispatcher,
+    ) {
+        RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeRequestConstructionOutcome::ConstructionFailed(
+            receipt,
+        ) => return receipt,
+        RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeRequestConstructionOutcome::Constructed(
+            handoff,
+        ) => handoff,
+    };
+
+    let RemoteSessionExpectedDeviceAdmissionConstructedHandoff {
+        requester_device_id,
+        acknowledgement_result,
+        request,
+    } = handoff;
+
+    let disposition = match sender.send(request).await {
+        Ok(()) => RemoteSessionExpectedDeviceAdmissionHandoffDisposition::Enqueued,
+        Err(mpsc::error::SendError(_)) => {
+            RemoteSessionExpectedDeviceAdmissionHandoffDisposition::ChannelClosed
+        }
+    };
+
+    RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceipt {
+        requester_device_id,
+        outcome: RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceiptOutcome::EligibleTerminal {
+            acknowledgement_result,
+            disposition,
+        },
+    }
+}
+'''
+
+          text = text.replace(marker, "\n" + helper + marker, 1)
+          path.write_text(text)
+          PY
+          git diff --check
+          git add "$SOURCE"
+          git rm "$WORKFLOW"
+          test "$(git diff --cached --name-only "$BASE" | wc -l)" -eq 1
+          test "$(git diff --cached --name-only "$BASE")" = "$SOURCE"
+          test "$(git diff --cached --numstat "$BASE" -- "$SOURCE" | awk '{print $2}')" = "0"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "C03e-RX: materialize fallible async producer terminal receipt composition"
+          git push origin HEAD
