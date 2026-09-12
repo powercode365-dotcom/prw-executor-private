@@ -985,6 +985,88 @@ where
     }
 }
 
+/// Produces at most one live fallible-verifier-time expected-device admission request and returns one fallible terminal handoff receipt.
+///
+/// Ineligible requester completions return their exact existing fallible receipt without constructing
+/// a dispatcher. Eligible custody creates exactly one caller-supplied dispatcher and invokes the
+/// existing RV fallible-receipt request constructor exactly once. Construction failure returns the
+/// exact existing fallible receipt without enqueue. A constructed request is offered exactly once
+/// through the borrowed production sender using ordinary asynchronous Tokio backpressure. Only
+/// successful queue acceptance maps to `Enqueued`; receiver closure terminally drops the returned
+/// unsent request and maps only to `ChannelClosed`.
+#[allow(
+    dead_code,
+    reason = "C03e-RX materializes only the RW-selected dormant fallible async producer send/receipt composition before separately gated dispatcher-source capture, channel ownership split and generic producer specialization"
+)]
+async fn produce_remote_session_expected_device_admission_with_fallible_verifier_time_and_fallible_receipt<
+    D,
+    F,
+>(
+    requester_device_id: DeviceId,
+    completion: Result<
+        RequesterRendezvousFallibleVerifierTimeProductionDurableSchedulingWorkerStop,
+        RemoteSessionSpawnedWorkerJoinError,
+    >,
+    dispatcher_factory: &mut F,
+    sender: &mpsc::Sender<
+        RemoteSessionExpectedDeviceAdmissionRequest<
+            D,
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeSource,
+        >,
+    >,
+) -> RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceipt
+where
+    D: CapabilityDispatcher + Send + 'static,
+    F: FnMut() -> D,
+{
+    let continuation =
+        match classify_remote_session_expected_device_admission_fallible_verifier_time_live_completion(
+            requester_device_id,
+            completion,
+        ) {
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeLiveCompletionClassification::Ineligible(
+                receipt,
+            ) => return receipt,
+            RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeLiveCompletionClassification::Eligible(
+                continuation,
+            ) => continuation,
+        };
+
+    let dispatcher = dispatcher_factory();
+    let handoff = match construct_remote_session_expected_device_admission_request_with_fallible_verifier_time_and_fallible_receipt(
+        continuation,
+        dispatcher,
+    ) {
+        RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeRequestConstructionOutcome::ConstructionFailed(
+            receipt,
+        ) => return receipt,
+        RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeRequestConstructionOutcome::Constructed(
+            handoff,
+        ) => handoff,
+    };
+
+    let RemoteSessionExpectedDeviceAdmissionConstructedHandoff {
+        requester_device_id,
+        acknowledgement_result,
+        request,
+    } = handoff;
+
+    let disposition = match sender.send(request).await {
+        Ok(()) => RemoteSessionExpectedDeviceAdmissionHandoffDisposition::Enqueued,
+        Err(mpsc::error::SendError(_)) => {
+            RemoteSessionExpectedDeviceAdmissionHandoffDisposition::ChannelClosed
+        }
+    };
+
+    RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceipt {
+        requester_device_id,
+        outcome: RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceiptOutcome::EligibleTerminal {
+            acknowledgement_result,
+            disposition,
+        },
+    }
+}
+
 /// Recoverable failed startup transaction retaining the exact admitted reachability authority.
 pub struct RemoteSessionEndpointLifecycleStartupFailure {
     authority_owner: Box<ReachabilityAuthorityRuntimeOwner>,
