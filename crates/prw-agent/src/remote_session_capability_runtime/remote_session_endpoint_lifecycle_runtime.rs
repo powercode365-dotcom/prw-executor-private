@@ -1949,13 +1949,11 @@ impl RemoteSessionEndpointLifecycleRuntime {
         ),
         E: FnMut(DeviceId, RemoteSessionRealAdmissionError),
     {
-        let mut producer = async |
-            requester_device_id: DeviceId,
-            completion: Result<
-                RequesterRendezvousFallibleVerifierTimeProductionDurableSchedulingWorkerStop,
-                RemoteSessionSpawnedWorkerJoinError,
-            >,
-        | {
+        let mut producer = async |requester_device_id: DeviceId,
+                                  completion: Result<
+            RequesterRendezvousFallibleVerifierTimeProductionDurableSchedulingWorkerStop,
+            RemoteSessionSpawnedWorkerJoinError,
+        >| {
             produce_remote_session_expected_device_admission_with_fallible_verifier_time_and_fallible_receipt(
                 requester_device_id,
                 completion,
