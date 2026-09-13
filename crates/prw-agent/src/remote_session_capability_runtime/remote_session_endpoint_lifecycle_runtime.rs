@@ -1888,6 +1888,100 @@ impl RemoteSessionEndpointLifecycleRuntime {
             )
     }
 
+    /// Specializes the existing fallible producer seam to the concrete fallible expected-device
+    /// handoff receipt without taking ownership of dispatcher or sender authority.
+    #[allow(
+        dead_code,
+        reason = "C03e-RZ materializes only the RY-selected dormant fallible generic producer specialization before separately gated dispatcher-source capture, channel construction and higher-owner integration"
+    )]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "C03e-RZ preserves the existing RN endpoint boundary plus borrowed dispatcher-factory and sender authority without introducing a new aggregate"
+    )]
+    fn drive_repeated_real_remote_admission_endpoint_lifecycle_with_production_durable_fallible_verifier_time_expected_device_admission_producer<
+        P,
+        D,
+        PS,
+        DF,
+        O,
+        F,
+        R,
+        E,
+    >(
+        self,
+        max_active_workers: NonZeroUsize,
+        authority: &SharedCurrentCapabilityAuthority<P>,
+        capability_authority: Arc<ProductionDurableCapabilityAuthority>,
+        policy_source: Arc<PS>,
+        requester_rendezvous_authority: &SharedRequesterRendezvousAuthority,
+        session_authentication: &mut SessionAuthenticationService,
+        expected_requests: mpsc::Receiver<
+            RemoteSessionExpectedDeviceAdmissionRequest<
+                D,
+                RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeSource,
+            >,
+        >,
+        dispatcher_factory: &mut DF,
+        sender: &mpsc::Sender<
+            RemoteSessionExpectedDeviceAdmissionRequest<
+                D,
+                RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeSource,
+            >,
+        >,
+        observe_receipt: O,
+        admission_timing: F,
+        on_rejection: R,
+        on_admission_failure: E,
+    ) -> Result<(), RemoteSessionPersistentCollectionConfigError>
+    where
+        P: PolicyEvaluator + Send + Sync + 'static,
+        D: CapabilityDispatcher + Send + 'static,
+        PS: RequesterRendezvousStartPolicySource + Send + Sync + ?Sized + 'static,
+        DF: FnMut() -> D,
+        O: FnMut(RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeHandoffReceipt),
+        F: FnMut(&DeviceId) -> RemoteSessionRealAdmissionTiming,
+        R: FnMut(
+            RemoteSessionExpectedDeviceAdmissionRejectionReason,
+            RemoteSessionExpectedDeviceAdmissionRequest<
+                D,
+                RemoteSessionExpectedDeviceAdmissionFallibleVerifierTimeSource,
+            >,
+        ),
+        E: FnMut(DeviceId, RemoteSessionRealAdmissionError),
+    {
+        let mut producer = async |
+            requester_device_id: DeviceId,
+            completion: Result<
+                RequesterRendezvousFallibleVerifierTimeProductionDurableSchedulingWorkerStop,
+                RemoteSessionSpawnedWorkerJoinError,
+            >,
+        | {
+            produce_remote_session_expected_device_admission_with_fallible_verifier_time_and_fallible_receipt(
+                requester_device_id,
+                completion,
+                &mut *dispatcher_factory,
+                sender,
+            )
+            .await
+        };
+
+        self.drive_repeated_real_remote_admission_endpoint_lifecycle_with_production_durable_fallible_verifier_time_scheduling_producer(
+            max_active_workers,
+            authority,
+            capability_authority,
+            policy_source,
+            requester_rendezvous_authority,
+            session_authentication,
+            expected_requests,
+            &mut producer,
+            map_remote_session_expected_device_admission_fallible_verifier_time_shutdown_suppression,
+            observe_receipt,
+            admission_timing,
+            on_rejection,
+            on_admission_failure,
+        )
+    }
+
     /// Consumes this endpoint owner and exposes only the bounded C03e-LO-selected terminal family.
     ///
     /// The existing C03e-LM durable endpoint method remains the sole owner of endpoint/executor
